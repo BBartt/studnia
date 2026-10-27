@@ -1,0 +1,24 @@
+.table { width: 100%; border-collapse: collapse; font-size: var(--fs-s); }
+.table th { padding: 0 8px 8px; text-align: left; font-size: var(--fs-xs); font-weight: 600; color: var(--text-3); }
+.table td { padding: 10px 8px; border-top: 1px solid var(--border); vertical-align: middle; }
+.num { text-align: right !important; font-variant-numeric: tabular-nums; }
+.score { font-family: var(--serif); font-size: var(--fs-l); font-weight: 650; }
+
+.player { display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; }
+.icon { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px; background: var(--surface-3); flex: none; }
+.nick { font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 12ch; }
+.tag { font-size: 0.68rem; font-weight: 600; padding: 1px 7px; border-radius: 99px; background: var(--surface-3); color: var(--text-2); }
+.off { background: var(--danger-bg); color: var(--danger); }
+
+.pips { display: inline-flex; gap: 5px; }
+.pip, .pipOn { width: 10px; height: 10px; border-radius: 3px; }
+.pip { background: var(--surface-3); }
+.pipOn { background: var(--accent); animation: pipIn 500ms var(--spring); }
+@keyframes pipIn { from { transform: scale(0); } }
+
+.winner td { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+
+.rounds { display: inline-flex; align-items: center; gap: 8px; }
+.count { font-size: var(--fs-xs); color: var(--text-3); font-variant-numeric: tabular-nums; }
+.lastMatch { display: inline-flex; align-items: center; gap: 8px; color: var(--text-2); }
+.crown { font-size: 0.68rem; font-weight: 700; padding: 1px 7px; border-radius: 99px; background: color-mix(in srgb, var(--accent) 20%, transparent); color: var(--accent); }

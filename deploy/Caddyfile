@@ -1,0 +1,5 @@
+# Caddy sam pobiera certyfikat HTTPS i przepuszcza WebSockety.
+{$DOMAIN} {
+	encode zstd gzip
+	reverse_proxy studnia:3001
+}

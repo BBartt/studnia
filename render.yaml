@@ -1,0 +1,11 @@
+# Render.com Blueprint — „New +” → „Blueprint” → wskaż to repozytorium.
+services:
+  - type: web
+    name: studnia
+    runtime: docker
+    plan: free
+    numInstances: 1          # stan gry jest w pamięci, więc zawsze jedna instancja
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production

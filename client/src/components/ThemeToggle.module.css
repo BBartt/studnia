@@ -1,0 +1,33 @@
+.toggle {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 14px);
+  right: 14px;
+  z-index: 45;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+.track {
+  display: flex;
+  align-items: center;
+  width: 54px;
+  height: 30px;
+  padding: 3px;
+  border: 1px solid var(--border-strong);
+  border-radius: 99px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  transition: background-color 300ms;
+}
+.knob {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--surface-3);
+  color: var(--tet);
+  transition: transform 360ms var(--spring), background-color 300ms;
+}
+.track[data-dark="true"] .knob { transform: translateX(24px); color: var(--accent); }

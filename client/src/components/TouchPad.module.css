@@ -1,0 +1,21 @@
+.pad { display: none; width: min(100%, 420px); gap: 8px; }
+@media (pointer: coarse) { .pad { display: grid; } }
+.tetris { grid-template-columns: repeat(4, 1fr); }
+.tetris .wide { grid-column: span 4; }
+.jumper { grid-template-columns: 1fr 1fr 1.6fr; }
+.btn {
+  min-height: 58px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-m);
+  background: var(--surface-2);
+  font-size: var(--fs-l);
+  font-weight: 700;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 80ms, background-color 80ms;
+}
+.btn:active { transform: scale(0.95); background: var(--surface-3); }
+.tetris .wide { background: var(--tet-bg); border-color: color-mix(in srgb, var(--tet) 40%, transparent); }
+.jump { background: var(--jmp-bg); border-color: color-mix(in srgb, var(--jmp) 40%, transparent); }

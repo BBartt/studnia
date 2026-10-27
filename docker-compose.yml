@@ -1,0 +1,34 @@
+# Uruchomienie na własnym serwerze (VPS):
+#   make up                      → http://IP_SERWERA:3001
+#   make up-https DOMAIN=gra.example.com → https://gra.example.com (certyfikat od Let's Encrypt)
+services:
+  studnia:
+    build: .
+    image: studnia:latest
+    restart: unless-stopped
+    environment:
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
+    ports:
+      - "${PORT:-3001}:3001"
+    volumes:
+      - studnia-data:/data   # ranking przetrwa restart i aktualizację
+
+  caddy:
+    image: caddy:2-alpine
+    profiles: ["https"]
+    restart: unless-stopped
+    depends_on: [studnia]
+    environment:
+      DOMAIN: ${DOMAIN:?Podaj DOMAIN, np. make up-https DOMAIN=gra.example.com}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  studnia-data:
+  caddy-data:
+  caddy-config:

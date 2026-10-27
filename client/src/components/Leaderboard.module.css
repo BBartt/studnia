@@ -1,0 +1,19 @@
+.box { padding: 22px 22px 14px; }
+.title { font-size: var(--fs-l); margin-bottom: 10px; }
+.empty { color: var(--text-2); font-size: var(--fs-s); padding-bottom: 8px; }
+.list { list-style: none; margin: 0; padding: 0; }
+.row {
+  display: grid;
+  grid-template-columns: 2.2ch 1fr auto auto;
+  align-items: baseline;
+  gap: 12px;
+  padding: 9px 0;
+  border-top: 1px solid var(--border);
+  font-size: var(--fs-s);
+}
+.row:first-child { border-top: 0; }
+.place { color: var(--text-3); font-variant-numeric: tabular-nums; text-align: right; }
+.row:nth-child(1) .place { color: var(--tet); font-weight: 700; }
+.nick { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.meta { color: var(--text-3); font-size: var(--fs-xs); }
+.points { font-family: var(--serif); font-weight: 650; font-variant-numeric: tabular-nums; min-width: 4ch; text-align: right; }

@@ -1,0 +1,57 @@
+.page {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(320px, 400px);
+  gap: clamp(32px, 6vw, 88px);
+  align-items: center;
+  max-width: 1140px;
+  margin: 0 auto;
+  padding: clamp(72px, 8vw, 96px) clamp(20px, 5vw, 56px) 48px;
+}
+.hero { display: grid; gap: 26px; }
+.titleRow { display: flex; align-items: flex-end; gap: clamp(20px, 4vw, 44px); flex-wrap: wrap; }
+.tagline { margin-bottom: 10px; color: var(--text-3); font-weight: 600; font-size: var(--fs-s); }
+.title {
+  font-size: clamp(3.6rem, 9vw, 7.2rem);
+  font-style: italic;
+  font-weight: 700;
+  font-variation-settings: "SOFT" 100, "opsz" 144;
+  letter-spacing: -0.035em;
+  line-height: 0.92;
+}
+/* kropka nad „i” w kolorach obu ról — ciche nawiązanie do dwóch graczy */
+.title::after {
+  content: "";
+  display: inline-block;
+  width: 0.14em;
+  height: 0.14em;
+  margin-left: 0.06em;
+  border-radius: 0.04em;
+  background: linear-gradient(90deg, var(--tet) 50%, var(--jmp) 50%);
+}
+.lede { max-width: 46ch; font-size: var(--fs-l); color: var(--text-2); line-height: 1.55; }
+
+.roles { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; max-width: 600px; }
+.role {
+  --accent: var(--tet);
+  display: flex; gap: 14px; align-items: flex-start;
+  padding: 16px 18px;
+  border-radius: var(--r-m);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-top: 2px solid var(--accent);
+}
+.role[data-role="jumper"] { --accent: var(--jmp); }
+.role strong { display: block; color: var(--accent); font-family: var(--serif); font-style: italic; font-size: var(--fs-l); line-height: 1.2; }
+.role span { font-size: var(--fs-s); color: var(--text-2); }
+
+.side { display: grid; gap: 18px; }
+.form { padding: 26px; display: grid; gap: 16px; }
+.error { color: var(--danger); font-size: var(--fs-xs); }
+.divider { display: flex; align-items: center; gap: 12px; color: var(--text-3); font-size: var(--fs-xs); }
+.divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+.joinRow { display: grid; grid-template-columns: 1fr auto; gap: 10px; }
+.code { text-transform: uppercase; letter-spacing: 0.3em; font-weight: 700; text-align: center; font-size: var(--fs-l); }
+.reset { justify-self: center; font-size: var(--fs-s); min-height: 36px; }
+
+@media (max-width: 860px) { .page { grid-template-columns: 1fr; align-items: start; } }

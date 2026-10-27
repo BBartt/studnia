@@ -1,0 +1,201 @@
+/* =========================================================
+   „Schronisko po zmroku” — stonowane łupkowe granaty,
+   przygaszona ochra (Tetris) i lodowy seledyn (skoczek).
+   Dwa motywy: [data-theme="dark"] i [data-theme="light"].
+   ========================================================= */
+:root {
+  --serif: "Fraunces", "Iowan Old Style", Georgia, serif;
+  --font: "Figtree", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  --r-s: 10px;
+  --r-m: 14px;
+  --r-l: 20px;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+
+  --fs-xs: 0.78rem;
+  --fs-s: 0.88rem;
+  --fs-m: 1rem;
+  --fs-l: 1.2rem;
+  --fs-xl: 1.6rem;
+  --fs-2xl: 2.3rem;
+}
+
+:root,
+[data-theme="dark"] {
+  --bg: #1b1f27;
+  --bg-deep: #161a21;
+  --surface: #232833;
+  --surface-2: #2a303c;
+  --surface-3: #333a47;
+  --border: rgba(255, 255, 255, 0.07);
+  --border-strong: rgba(255, 255, 255, 0.13);
+  --text: #e6e3dc;
+  --text-2: #a9adb5;
+  --text-3: #767c88;
+
+  --tet: #d9a55b;
+  --tet-bg: rgba(217, 165, 91, 0.12);
+  --jmp: #82b9b1;
+  --jmp-bg: rgba(130, 185, 177, 0.12);
+  --accent: #a9a5d8;
+  --accent-ink: #1d1f2c;
+  --danger: #d46a6a;
+  --danger-bg: rgba(212, 106, 106, 0.14);
+  --good: #8dbf8b;
+
+  --shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 18px 40px -24px rgba(0, 0, 0, 0.7);
+  --glow-tet: 0 0 0 1px rgba(217, 165, 91, 0.25), 0 24px 60px -30px rgba(217, 165, 91, 0.45);
+  --glow-jmp: 0 0 0 1px rgba(130, 185, 177, 0.25), 0 24px 60px -30px rgba(130, 185, 177, 0.45);
+  color-scheme: dark;
+}
+
+[data-theme="light"] {
+  --bg: #ecebe6;
+  --bg-deep: #e2e1db;
+  --surface: #f6f5f1;
+  --surface-2: #ffffff;
+  --surface-3: #e9e8e3;
+  --border: rgba(30, 34, 42, 0.09);
+  --border-strong: rgba(30, 34, 42, 0.16);
+  --text: #23272f;
+  --text-2: #5a606b;
+  --text-3: #8a8f98;
+
+  --tet: #b9822f;
+  --tet-bg: rgba(185, 130, 47, 0.1);
+  --jmp: #4f918a;
+  --jmp-bg: rgba(79, 145, 138, 0.1);
+  --accent: #6e69b8;
+  --accent-ink: #ffffff;
+  --danger: #b84c4c;
+  --danger-bg: rgba(184, 76, 76, 0.1);
+  --good: #4f8a4d;
+
+  --shadow: 0 1px 2px rgba(30, 34, 42, 0.06), 0 16px 36px -26px rgba(30, 34, 42, 0.35);
+  --glow-tet: 0 0 0 1px rgba(185, 130, 47, 0.3), 0 24px 50px -30px rgba(185, 130, 47, 0.5);
+  --glow-jmp: 0 0 0 1px rgba(79, 145, 138, 0.3), 0 24px 50px -30px rgba(79, 145, 138, 0.5);
+  color-scheme: light;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body, #root { min-height: 100%; }
+
+body {
+  margin: 0;
+  font-family: var(--font);
+  font-size: var(--fs-m);
+  line-height: 1.55;
+  color: var(--text);
+  background:
+    radial-gradient(70rem 40rem at 50% -20%, var(--surface), transparent 70%),
+    var(--bg);
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  transition: background-color 300ms, color 300ms;
+  overflow-x: hidden;
+}
+
+h1, h2, h3 {
+  margin: 0;
+  font-family: var(--serif);
+  font-variation-settings: "SOFT" 100, "opsz" 72;
+  font-weight: 650;
+  line-height: 1.08;
+  letter-spacing: -0.015em;
+}
+p { margin: 0; }
+button { font: inherit; color: inherit; }
+::selection { background: var(--accent); color: var(--accent-ink); }
+
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 6px; }
+
+/* ---------- Przyciski ---------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5em;
+  min-height: 44px;
+  padding: 0 1.1em;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-s);
+  background: var(--surface-2);
+  color: var(--text);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 160ms, border-color 160ms, transform 160ms var(--ease-out);
+}
+.btn:hover:not(:disabled) { background: var(--surface-3); }
+.btn:active:not(:disabled) { transform: scale(0.97); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.btn--primary {
+  border-color: transparent;
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.btn--primary:hover:not(:disabled) { background: var(--accent); filter: brightness(1.08); }
+
+.btn--quiet { border-color: transparent; background: transparent; color: var(--text-2); }
+.btn--quiet:hover:not(:disabled) { background: var(--surface); color: var(--text); }
+
+.btn--large { min-height: 54px; padding: 0 1.6em; font-size: var(--fs-l); border-radius: var(--r-m); }
+
+/* ---------- Pola ---------- */
+.field { display: grid; gap: 6px; }
+.field__label { font-size: var(--fs-s); font-weight: 600; color: var(--text-2); }
+
+.input {
+  width: 100%;
+  min-height: 48px;
+  padding: 0 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-s);
+  background: var(--bg-deep);
+  color: var(--text);
+  font: inherit;
+  transition: border-color 160ms, box-shadow 160ms;
+}
+.input::placeholder { color: var(--text-3); }
+.input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); }
+
+/* ---------- Powierzchnie ---------- */
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-l);
+  box-shadow: var(--shadow);
+}
+
+.kbd {
+  display: inline-block;
+  min-width: 1.8em;
+  padding: 0.05em 0.45em;
+  border: 1px solid var(--border-strong);
+  border-bottom-width: 2px;
+  border-radius: 6px;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  text-align: center;
+  background: var(--surface-2);
+}
+
+.visually-hidden {
+  position: absolute !important;
+  width: 1px; height: 1px;
+  overflow: hidden; clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@keyframes nextIn { from { transform: translateY(-8px) scale(0.7); opacity: 0; } }
