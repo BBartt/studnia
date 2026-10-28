@@ -81,6 +81,9 @@ Działa bez konta i bez konfiguracji routera, dopóki masz włączony komputer.
 | `ALLOWED_ORIGINS` | pusto (każdy) | dozwolone adresy strony dla WebSocketów, np. `https://gra.twojadomena.pl` |
 | `TRUST_PROXY` | `true` | czy ufać nagłówkom reverse proxy |
 | `SIMULATED_LATENCY_MS` | `0` | tylko do testów: sztuczne opóźnienie każdej wiadomości w jedną stronę, np. `60` daje ping ok. 120 ms |
+| `SIMULATED_JITTER_MS` | `0` | tylko do testów: losowy dodatek 0…N ms (nierówne łącze), kolejność wiadomości zachowana |
+
+Test „słabego łącza” lokalnie: `SIMULATED_LATENCY_MS=40 SIMULATED_JITTER_MS=50 make prod`.
 | `VITE_WS_URL` | — | (build) pełny adres WebSocketu, gdy frontend stoi osobno |
 
 ## Architektura
@@ -103,7 +106,12 @@ Dockerfile, docker-compose.yml, deploy/Caddyfile, render.yaml, Makefile
 ```
 
 - **Serwer jest autorytatywny.** Fizyka liczy się na serwerze krokami 1/60 s, a timer budzi się 30 razy na sekundę (2 kroki naraz) i od razu wysyła stan. Stan jest serializowany raz dla wszystkich graczy. Klient wysyła tylko wejście.
-- **Predykcja skoczka.** Silnik leży w `shared/engine`, więc przeglądarka skoczka liczy jego ruch tym samym kodem co serwer i pokazuje go bez czekania na odpowiedź. Gdy przychodzi stan z serwera, klient porównuje go ze swoją pozycją sprzed czasu pingu i łagodnie poprawia różnicę. Przy dużym rozjeździe, np. po zepchnięciu przez klocek, przyjmuje stan serwera. O wyniku zawsze decyduje serwer.
+- **Płynność mimo internetu.** Opóźnienie sieci jest ukryte trzema mechanizmami:
+  - *Predykcja skoczka* (`client/src/game/predictor.js`). Silnik leży w `shared/engine`, więc przeglądarka skoczka liczy jego ruch tym samym kodem co serwer. Każda zmiana klawiszy ma numer, a serwer odsyła numer ostatniej zastosowanej zmiany i ile czasu symulacji od niej minęło. Klient porównuje stan serwera ze swoją historią w dokładnie tej samej chwili gry i rozpuszcza różnicę płynnie w kolejnych klatkach. Pozycja jest rysowana pomiędzy krokami fizyki, więc ruch nie idzie „schodkami” przy nierównych klatkach ani na monitorach 120/144 Hz. O zgnieceniu, lawie i wyniku decyduje serwer.
+  - *Predykcja klocka* (`client/src/game/piecePredictor.js`). Ruchy ← → ↑ ↓ są widoczne od razu, a serwer potwierdza je numerami.
+  - *Interpolacja* (`renderer.js`). Przeciwnik-skoczek na ekranie Tetrisa jest rysowany około 100 ms „w przeszłości”, płynnie między paczkami opisanymi czasem serwera, więc nierówne przychodzenie paczek przestaje być widoczne.
+- **Wydajność rysowania.** Statyczne tło jest liczone raz, canvas nie używa `shadowBlur`, gęstość pikseli jest ograniczona do 2×, a nad animowaną planszą nie ma rozmycia `backdrop-filter`.
+- **Diagnostyka płynności.** Przycisk pod statystykami w grze pokazuje FPS, najdłuższą klatkę, ping, liczbę aktualizacji na sekundę, najdłuższą przerwę między nimi i opóźnienie pętli serwera. Czerwona wartość wskazuje źródło problemu: komputer, łącze albo serwer.
 - **Ping** jest mierzony co 2 s i widoczny w grze obok nicku przeciwnika: zielony poniżej 70 ms, żółty poniżej 150 ms, czerwony powyżej.
 - **Pole widzenia skoczka to kamera po stronie klienta.** Serwer wysyła obu graczom pełny stan, bo tak jest prościej i szybciej. Technicznie obeznany gracz mógłby więc podejrzeć całą planszę w narzędziach przeglądarki. Między znajomymi nie ma to znaczenia.
 - **Stan gry omija React.** Canvas subskrybuje store bezpośrednio, HUD wybiera pola przez `useSyncExternalStore`, a efekty DOM działają przez Web Animations API.

@@ -22,10 +22,23 @@ const isTyping = (e) => e.target instanceof Element && e.target.closest('input, 
  * Klawiatura + dotyk dla aktualnej roli gracza.
  * Tetris wysyła pojedyncze akcje, skoczek — stan klawiszy tylko przy zmianie.
  */
-export function useControls({ role, enabled, sendInput, hardDrop = false, onJumperInput }) {
+export function useControls({ role, enabled, sendInput, hardDrop = false, onJumperInput, onTetrisAction }) {
   const pressedCodes = useRef(new Set());
   const touch = useRef({ left: false, right: false, jump: false });
   const lastSignature = useRef('');
+  const lastKeys = useRef({ left: false, right: false, jump: false });
+  const seq = useRef(0);
+
+  const sendJumper = useCallback((keys) => {
+    seq.current += 1;
+    onJumperInput?.(keys, seq.current); // predykcja: ruch od razu na ekranie
+    sendInput({ keys, seq: seq.current });
+  }, [sendInput, onJumperInput]);
+
+  const sendTetris = useCallback((action) => {
+    const n = onTetrisAction?.(action); // predykcja: klocek rusza się od razu
+    sendInput({ action, seq: n });
+  }, [sendInput, onTetrisAction]);
 
   const flushJumper = useCallback(() => {
     const fromKeys = new Set([...pressedCodes.current].map((code) => JUMPER_KEYS[code]));
@@ -37,14 +50,14 @@ export function useControls({ role, enabled, sendInput, hardDrop = false, onJump
     const signature = `${+keys.left}${+keys.right}${+keys.jump}`;
     if (signature === lastSignature.current) return;
     lastSignature.current = signature;
-    onJumperInput?.(keys);   // predykcja: ruch od razu na ekranie
-    sendInput({ keys });
-  }, [sendInput, onJumperInput]);
+    lastKeys.current = keys;
+    sendJumper(keys);
+  }, [sendJumper]);
 
   const act = useCallback((action) => {
     if (action === 'hard' && !hardDrop) return;
-    if (enabled && role === ROLES.TETRIS) sendInput({ action });
-  }, [enabled, role, sendInput, hardDrop]);
+    if (enabled && role === ROLES.TETRIS) sendTetris(action);
+  }, [enabled, role, sendTetris, hardDrop]);
 
   const setTouch = useCallback((key, value) => {
     touch.current[key] = value;
@@ -55,6 +68,7 @@ export function useControls({ role, enabled, sendInput, hardDrop = false, onJump
     pressedCodes.current.clear();
     touch.current = { left: false, right: false, jump: false };
     lastSignature.current = '';
+    lastKeys.current = { left: false, right: false, jump: false };
     if (!enabled) return undefined;
 
     const onDown = (e) => {
@@ -65,7 +79,7 @@ export function useControls({ role, enabled, sendInput, hardDrop = false, onJump
         e.preventDefault();
         if (action === 'hard' && !hardDrop) return; // zrzut wyłączony, dopóki obaj się nie zgodzą
         if (e.repeat && !REPEATABLE.has(action)) return;
-        sendInput({ action });
+        sendTetris(action);
       } else if (JUMPER_KEYS[e.code]) {
         e.preventDefault();
         if (e.repeat) return;
@@ -91,7 +105,7 @@ export function useControls({ role, enabled, sendInput, hardDrop = false, onJump
       window.removeEventListener('keyup', onUp);
       window.removeEventListener('blur', onBlur);
     };
-  }, [role, enabled, sendInput, flushJumper, hardDrop]);
+  }, [role, enabled, sendTetris, sendJumper, flushJumper, hardDrop]);
 
   return { act, setTouch };
 }

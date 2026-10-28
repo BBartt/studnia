@@ -19,4 +19,6 @@ export const config = Object.freeze({
   trustProxy: process.env.TRUST_PROXY !== 'false',
   // Tylko do testów: sztuczne opóźnienie każdej wiadomości (ms, w jedną stronę) — symuluje internet
   simulatedLatencyMs: Number(process.env.SIMULATED_LATENCY_MS) || 0,
+  // Tylko do testów: losowy dodatek 0…N ms do opóźnienia (nierówne łącze); kolejność wiadomości zachowana
+  simulatedJitterMs: Number(process.env.SIMULATED_JITTER_MS) || 0,
 });

@@ -168,9 +168,9 @@ export class Room {
       case C2S.INPUT:
         if (this.phase !== PHASE.PLAYING || !this.engine) return;
         if (p.role === ROLES.TETRIS && TETRIS_ACTIONS.includes(msg.action)) {
-          this.engine.queueAction(msg.action);
+          this.engine.queueAction(msg.action, toSeq(msg.seq));
         } else if (p.role === ROLES.JUMPER && msg.keys && typeof msg.keys === 'object') {
-          this.engine.setJumperInput(msg.keys);
+          this.engine.setJumperInput(msg.keys, toSeq(msg.seq));
         }
         return;
 
@@ -236,11 +236,17 @@ export class Room {
     this.stopLoop();
     let last = performance.now();
     let acc = 0;
+    this.loopGap = 0;      // najdłuższa przerwa między obiegami pętli w ostatniej sekundzie (ms)
+    let gapWindow = 0;
+    let gapStarted = last;
 
     this.loop = setInterval(() => {
       const now = performance.now();
-      acc += Math.min(0.1, (now - last) / 1000);
+      const gap = now - last;
+      acc += Math.min(0.1, gap / 1000);
       last = now;
+      gapWindow = Math.max(gapWindow, gap);
+      if (now - gapStarted >= 1000) { this.loopGap = gapWindow; gapWindow = 0; gapStarted = now; }
 
       while (acc >= STEP && !this.engine.result) {
         this.engine.tick(STEP);
@@ -342,7 +348,10 @@ export class Room {
   broadcastState() {
     if (!this.engine) return;
     // serializujemy raz dla wszystkich graczy
-    const raw = JSON.stringify({ type: S2C.STATE, state: this.engine.snapshot() });
+    const state = this.engine.snapshot();
+    state.t = Math.round(performance.now());      // czas serwera — do płynnej interpolacji u klienta
+    state.loopGap = Math.round(this.loopGap ?? 0); // diagnostyka: czy serwer nadąża
+    const raw = JSON.stringify({ type: S2C.STATE, state });
     for (const p of this.players) p.client?.sendRaw(raw);
   }
 
@@ -365,3 +374,9 @@ export class Room {
   }
 }
 
+
+/** Numer kolejny wejścia od klienta (dodatnia liczba całkowita albo 0). */
+function toSeq(value) {
+  const n = Number(value);
+  return Number.isSafeInteger(n) && n > 0 ? n : 0;
+}

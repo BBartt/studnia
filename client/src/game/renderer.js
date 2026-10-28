@@ -65,8 +65,32 @@ export class BoardRenderer {
       x: Math.random() * COLS, y: Math.random() * ROWS,
       r: rand(0.03, 0.08), v: rand(0.2, 0.6), p: Math.random() * TAU,
     }));
+    this.buffer = [];        // stany skoczka z serwera do płynnej interpolacji (ekran Tetrisa)
+    this.clockOffset = null; // lokalny zegar − zegar serwera (najmniejsza zaobserwowana różnica)
+    this.offsets = [];
+    this.backdropCache = null;
+    this.vignetteCache = null;
+    this.stats = { frames: [], arrivals: [], loopGap: 0 };
     this.setOptions(options);
     this.resize();
+  }
+
+  /** Statystyki do panelu diagnostycznego. */
+  getStats() {
+    const now = performance.now();
+    const frames = this.stats.frames.filter((f) => f.t > now - 2000);
+    const arrivals = this.stats.arrivals.filter((t) => t > now - 2000);
+    let maxGap = 0;
+    for (let i = 1; i < arrivals.length; i++) maxGap = Math.max(maxGap, arrivals[i] - arrivals[i - 1]);
+    const avgFrame = frames.length ? frames.reduce((a, f) => a + f.d, 0) / frames.length : 0;
+    return {
+      fps: avgFrame ? Math.round(1000 / avgFrame) : 0,
+      worstFrame: Math.round(Math.max(0, ...frames.map((f) => f.d))),
+      updates: Math.round(arrivals.length / 2),
+      maxGap: Math.round(maxGap),
+      loopGap: this.stats.loopGap,
+      dpr: this.dpr,
+    };
   }
 
   /** Predykcja skoczka (tylko na ekranie skoczka) i źródło pingu do korekty. */
@@ -75,11 +99,18 @@ export class BoardRenderer {
     this.latency = latency;
   }
 
+  setPiecePredictor(piecePredictor) {
+    this.piecePredictor = piecePredictor;
+  }
+
   setOptions({ reducedMotion, showDanger, lite, theme, mode, phase, countdownEndsAt, countdownTotal } = {}) {
     if (reducedMotion !== undefined) this.reduced = reducedMotion;
     if (lite !== undefined) this.lite = lite;
     if (showDanger !== undefined) this.showDanger = showDanger;
-    if (theme) this.pal = PALETTES[theme] ?? PALETTES.dark;
+    if (theme && PALETTES[theme] !== this.pal) {
+      this.pal = PALETTES[theme] ?? PALETTES.dark;
+      this.backdropCache = null;
+    }
     if (mode) this.mode = mode;
     if (phase) this.phase = phase;
     if (countdownEndsAt !== undefined) this.countdownEndsAt = countdownEndsAt;
@@ -89,7 +120,9 @@ export class BoardRenderer {
   resize() {
     const rect = this.canvas.getBoundingClientRect();
     if (!rect.width) return;
-    this.dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+    this.dpr = Math.min(window.devicePixelRatio || 1, 2); // powyżej 2× różnicy nie widać, a koszt rośnie kwadratowo
+    this.backdropCache = null;
+    this.vignetteCache = null;
     this.canvas.width = Math.round(rect.width * this.dpr);
     this.canvas.height = Math.round(rect.height * this.dpr);
     this.cs = Math.min(rect.width / COLS, rect.height / ROWS);
@@ -106,7 +139,13 @@ export class BoardRenderer {
       return;
     }
     if (replayEvents) for (const e of snap.events ?? []) this.onEvent(e);
-    if (this.predicting()) this.predictor.sync(snap, this.latency?.current?.rtt ?? 100);
+    const now = performance.now();
+    this.stats.arrivals.push(now);
+    if (this.stats.arrivals.length > 200) this.stats.arrivals.splice(0, 100);
+    this.stats.loopGap = snap.loopGap ?? 0;
+    if (this.predicting()) this.predictor.sync(snap);
+    this.piecePredictor?.sync(snap);
+    this.bufferJumper(snap, now);
     const j = snap.jumper;
     if (!this.view || Math.hypot(j.x - this.view.x, j.y - this.view.y) > 2.5) {
       this.view = { x: j.x, y: j.y };
@@ -303,6 +342,12 @@ export class BoardRenderer {
     const { ctx, cs } = this;
     if (!cs) return;
     this.time += dt;
+    const nowT = performance.now();
+    if (this.lastFrameAt) {
+      this.stats.frames.push({ t: nowT, d: nowT - this.lastFrameAt });
+      if (this.stats.frames.length > 300) this.stats.frames.splice(0, 150);
+    }
+    this.lastFrameAt = nowT;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
@@ -350,6 +395,50 @@ export class BoardRenderer {
     }
   }
 
+  /**
+   * Bufor do interpolacji: zapamiętujemy pozycję skoczka z czasem serwera.
+   * Rysujemy ją ~100 ms „w przeszłości”, płynnie między dwiema paczkami —
+   * nierówne przychodzenie paczek przestaje być widoczne.
+   */
+  bufferJumper(snap, now) {
+    if (snap.t == null) return;
+    const offset = now - snap.t;
+    this.offsets.push({ t: now, v: offset });
+    while (this.offsets.length && this.offsets[0].t < now - 3000) this.offsets.shift();
+    this.clockOffset = Math.min(...this.offsets.map((o) => o.v));
+    const j = snap.jumper;
+    const last = this.buffer[this.buffer.length - 1];
+    if (last && Math.hypot(j.x - last.x, j.y - last.y) > 2.5) this.buffer = []; // teleport (nowa runda)
+    this.buffer.push({ t: snap.t, x: j.x, y: j.y });
+    if (this.buffer.length > 40) this.buffer.splice(0, this.buffer.length - 40);
+  }
+
+  interpolatedJumper() {
+    const b = this.buffer;
+    if (b.length < 2 || this.clockOffset == null) return null;
+    const renderT = performance.now() - this.clockOffset - 100;
+    if (renderT <= b[0].t) return b[0];
+    for (let i = b.length - 1; i > 0; i--) {
+      if (b[i - 1].t <= renderT) {
+        const a = b[i - 1];
+        const c = b[i];
+        const f = Math.min(1, (renderT - a.t) / (c.t - a.t || 1));
+        return { x: a.x + (c.x - a.x) * f, y: a.y + (c.y - a.y) * f };
+      }
+    }
+    return b[b.length - 1];
+  }
+
+  /** Klocek do narysowania — u gracza-Tetrisa z przewidzianymi ruchami. */
+  displayPiece() {
+    const snap = this.snap;
+    if (this.piecePredictor && this.mode === 'full' && this.phase === 'playing') {
+      const p = this.piecePredictor.piece(snap);
+      return { piece: p, ghost: p?.ghost ?? snap.ghost };
+    }
+    return { piece: snap.piece, ghost: snap.ghost };
+  }
+
   predicting() {
     return Boolean(this.predictor && this.mode === 'jumper' && this.phase === 'playing');
   }
@@ -366,7 +455,7 @@ export class BoardRenderer {
     if (!this.snap || !this.view) return;
     if (this.predicting()) {
       this.predictor.advance(dt);
-      const p = this.predictor.state;
+      const p = this.predictor.renderPosition();
       if (p && !this.snap.jumper.dead) {
         // własny skoczek bez opóźnienia — dokładnie tam, gdzie policzyła go przeglądarka
         this.view.x = p.x;
@@ -375,32 +464,55 @@ export class BoardRenderer {
       }
     }
     const j = this.snap.jumper;
+    const smooth = j.dead ? null : this.interpolatedJumper();
+    if (smooth) {
+      this.view.x = smooth.x;
+      this.view.y = smooth.y;
+      return;
+    }
     const follow = Math.min(1, dt * 22);
     this.view.x += (j.x - this.view.x) * follow;
     this.view.y += (j.y - this.view.y) * follow;
+  }
+
+  /** Statyczne tło (gradient, pasy, kropki) rysujemy raz do bufora, potem tylko kopiujemy. */
+  backdropImage() {
+    const { cs, pal, dpr } = this;
+    const key = `${cs}|${dpr}|${pal.boardTop}`;
+    if (this.backdropCache?.key === key) return this.backdropCache.canvas;
+    const w = COLS * cs;
+    const h = ROWS * cs;
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.ceil(w * dpr);
+    canvas.height = Math.ceil(h * dpr);
+    const c = canvas.getContext('2d');
+    c.scale(dpr, dpr);
+    const bg = c.createLinearGradient(0, 0, 0, h);
+    bg.addColorStop(0, pal.boardTop);
+    bg.addColorStop(1, pal.boardBottom);
+    c.fillStyle = bg;
+    c.fillRect(0, 0, w, h);
+    c.fillStyle = pal.stripe;
+    for (let x = 0; x < COLS; x += 2) c.fillRect(x * cs, 0, cs, h);
+    c.fillStyle = pal.dot;
+    for (let y = 1; y < ROWS; y++) {
+      for (let x = 1; x < COLS; x++) {
+        c.beginPath();
+        c.arc(x * cs, y * cs, Math.max(0.7, cs * 0.035), 0, TAU);
+        c.fill();
+      }
+    }
+    this.backdropCache = { key, canvas };
+    return canvas;
   }
 
   drawBackdrop(dt) {
     const { ctx, cs, pal } = this;
     const w = COLS * cs;
     const h = ROWS * cs;
-    const bg = ctx.createLinearGradient(0, 0, 0, h);
-    bg.addColorStop(0, pal.boardTop);
-    bg.addColorStop(1, pal.boardBottom);
-    ctx.fillStyle = bg;
+    ctx.fillStyle = pal.boardBottom;
     ctx.fillRect(-cs, -cs, w + cs * 2, h + cs * 2);
-
-    ctx.fillStyle = pal.stripe;
-    for (let x = 0; x < COLS; x += 2) ctx.fillRect(x * cs, 0, cs, h);
-
-    ctx.fillStyle = pal.dot;
-    for (let y = 1; y < ROWS; y++) {
-      for (let x = 1; x < COLS; x++) {
-        ctx.beginPath();
-        ctx.arc(x * cs, y * cs, Math.max(0.7, cs * 0.035), 0, TAU);
-        ctx.fill();
-      }
-    }
+    ctx.drawImage(this.backdropImage(), 0, 0, w, h);
 
     ctx.fillStyle = pal.snow;
     for (const f of this.snow) {
@@ -440,10 +552,8 @@ export class BoardRenderer {
     }
     ctx.globalAlpha = 1;
 
-    // lawa — falująca tafla
+    // lawa — falująca tafla (bez shadowBlur — poświatę daje gradient powyżej)
     ctx.save();
-    ctx.shadowColor = pal.hazard;
-    ctx.shadowBlur = cs * 0.4;
     ctx.fillStyle = pal.hazard;
     for (const c of lava) {
       if (!free(c)) continue;
@@ -564,7 +674,8 @@ export class BoardRenderer {
   }
 
   drawGhost() {
-    const { ghost, piece, danger } = this.snap;
+    const { danger } = this.snap;
+    const { piece, ghost } = this.displayPiece();
     if (!ghost || !piece) return;
     const { ctx, cs, pal } = this;
     const alert = danger && this.showDanger;
@@ -586,19 +697,26 @@ export class BoardRenderer {
   }
 
   drawPiece(dt) {
-    const { piece } = this.snap;
+    const { piece } = this.displayPiece();
     if (!piece) return;
     this.spawnT = Math.min(1, this.spawnT + dt / 0.18);
     const k = easeOutBack(this.spawnT);
     const color = this.pal.pieces[piece.type];
-    const { ctx } = this;
-    ctx.save();
-    ctx.shadowColor = color;
-    ctx.shadowBlur = this.cs * 0.35;
+    const { ctx, cs } = this;
+    // lekka poświata pod klockiem zamiast kosztownego shadowBlur
+    ctx.globalAlpha = 0.18;
+    ctx.fillStyle = color;
+    for (const [x, y] of piece.cells) {
+      if (y >= 0) {
+        ctx.beginPath();
+        ctx.roundRect(x * cs - cs * 0.12, y * cs - cs * 0.12, cs * 1.24, cs * 1.24, cs * 0.3);
+        ctx.fill();
+      }
+    }
+    ctx.globalAlpha = 1;
     for (const [x, y] of piece.cells) {
       if (y >= 0) this.block(x, y, color, { scale: 0.55 + 0.45 * k, alpha: Math.min(1, this.spawnT * 2) });
     }
-    ctx.restore();
   }
 
   drawStreaks(dt) {
@@ -738,13 +856,17 @@ export class BoardRenderer {
       if (k >= 1) this.spin = null;
     }
 
-    ctx.shadowColor = j.chain >= 2 ? pal.gold : pal.jumper;
-    ctx.shadowBlur = cs * (0.35 + j.chain * 0.12);
+    // poświata skoczka jako półprzezroczysta obwódka (bez shadowBlur)
+    ctx.globalAlpha = 0.25 + Math.min(j.chain, 4) * 0.08;
+    ctx.fillStyle = j.chain >= 2 ? pal.gold : pal.jumper;
+    ctx.beginPath();
+    ctx.roundRect(x - cs * 0.1, y - cs * 0.1, w + cs * 0.2, h + cs * 0.2, Math.min(w, h) * 0.45);
+    ctx.fill();
+    ctx.globalAlpha = 1;
     ctx.fillStyle = pal.jumperBody;
     ctx.beginPath();
     ctx.roundRect(x, y, w, h, Math.min(w, h) * 0.32);
     ctx.fill();
-    ctx.shadowBlur = 0;
     ctx.strokeStyle = pal.ink;
     ctx.lineWidth = Math.max(1.2, cs * 0.05);
     ctx.stroke();
@@ -864,11 +986,17 @@ export class BoardRenderer {
     if (z < 0.05) return;
     const w = COLS * cs;
     const h = ROWS * cs;
-    const g = ctx.createRadialGradient(w / 2, h * 0.55, Math.min(w, h) * 0.35, w / 2, h * 0.55, Math.max(w, h) * 0.62);
-    g.addColorStop(0, `rgba(${pal.vignette},0)`);
-    g.addColorStop(1, `rgba(${pal.vignette},${0.6 * z})`);
-    ctx.fillStyle = g;
+    const key = `${w}|${h}|${pal.vignette}`;
+    if (this.vignetteCache?.key !== key) {
+      const g = ctx.createRadialGradient(w / 2, h * 0.55, Math.min(w, h) * 0.35, w / 2, h * 0.55, Math.max(w, h) * 0.62);
+      g.addColorStop(0, `rgba(${pal.vignette},0)`);
+      g.addColorStop(1, `rgba(${pal.vignette},0.6)`);
+      this.vignetteCache = { key, g };
+    }
+    ctx.globalAlpha = z;
+    ctx.fillStyle = this.vignetteCache.g;
     ctx.fillRect(0, 0, w, h);
+    ctx.globalAlpha = 1;
   }
 
   /** Strzałka przy górnej krawędzi, gdy klocek spada nad kadrem skoczka. */

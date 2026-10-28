@@ -72,7 +72,20 @@ function allow(client) {
 
 const clients = new Map(); // ws → client
 
+/** Symulacja łącza (tylko testy): opóźnienie + jitter z zachowaniem kolejności. */
+function makeDelayer() {
+  let lastAt = 0;
+  return (fn) => {
+    if (!config.simulatedLatencyMs && !config.simulatedJitterMs) return fn();
+    const at = Math.max(lastAt, Date.now() + config.simulatedLatencyMs + Math.random() * config.simulatedJitterMs);
+    lastAt = at;
+    setTimeout(fn, at - Date.now());
+  };
+}
+
 wss.on('connection', (ws) => {
+  const delayOut = makeDelayer();
+  const delayIn = makeDelayer();
   const client = {
     id: null,
     sessionId: null,
@@ -83,9 +96,7 @@ wss.on('connection', (ws) => {
       this.sendRaw(JSON.stringify(obj));
     },
     sendRaw(text) {
-      const out = () => { if (ws.readyState === ws.OPEN) ws.send(text); };
-      if (config.simulatedLatencyMs) setTimeout(out, config.simulatedLatencyMs);
-      else out();
+      delayOut(() => { if (ws.readyState === ws.OPEN) ws.send(text); });
     },
   };
   clients.set(ws, client);
@@ -103,8 +114,7 @@ wss.on('connection', (ws) => {
         console.error('[ws] błąd obsługi wiadomości', msg.type, err);
       }
     };
-    if (config.simulatedLatencyMs) setTimeout(handle, config.simulatedLatencyMs);
-    else handle();
+    delayIn(handle);
   });
   ws.on('close', () => {
     clients.delete(ws);
@@ -125,7 +135,9 @@ const heartbeat = setInterval(() => {
 
 server.listen(config.port, config.host, () => {
   console.log(`[studnia] serwer działa na http://${config.host}:${config.port} (WebSocket: /ws, tryb: ${config.production ? 'produkcja' : 'deweloperski'})`);
-  if (config.simulatedLatencyMs) console.log(`[studnia] UWAGA: symulowane opóźnienie ${config.simulatedLatencyMs} ms w każdą stronę`);
+  if (config.simulatedLatencyMs || config.simulatedJitterMs) {
+    console.log(`[studnia] UWAGA: symulowane łącze — opóźnienie ${config.simulatedLatencyMs} ms + jitter do ${config.simulatedJitterMs} ms w każdą stronę`);
+  }
 });
 
 /* ---------- Łagodne zamykanie (docker stop, deploy) ---------- */

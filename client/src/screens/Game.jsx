@@ -14,6 +14,8 @@ import RoleIcon from '../components/RoleIcon.jsx';
 import { CountdownOverlay, RoundOverlay, PausedOverlay, MatchOverDialog } from '../components/Overlays.jsx';
 import { ROLE_INFO, roleKeys } from '../game/roles.js';
 import { JumperPredictor } from '../game/predictor.js';
+import { PiecePredictor } from '../game/piecePredictor.js';
+import Diagnostics from '../components/Diagnostics.jsx';
 import { shake, punch, thud, nudge } from '../game/uiFx.js';
 import { createOuterFx } from '../game/outerFx.js';
 import { PALETTES } from '../game/palette.js';
@@ -69,10 +71,17 @@ export default function Game() {
     [isJumper, room.round], // eslint-disable-line react-hooks/exhaustive-deps
   );
   useEffect(() => { predictor?.setPhysics(me?.settings); }, [predictor, me?.settings]);
-  const onJumperInput = useCallback((keys) => predictor?.setInput(keys), [predictor]);
+  const onJumperInput = useCallback((keys, seq) => predictor?.setInput(keys, seq), [predictor]);
+
+  // Predykcja ruchów klocka — tylko u gracza-Tetrisa
+  const piecePredictor = useMemo(
+    () => (me?.role === ROLES.TETRIS ? new PiecePredictor() : null),
+    [me?.role, room.round], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const onTetrisAction = useCallback((action) => piecePredictor?.act(action) ?? 0, [piecePredictor]);
 
   const { act, setTouch } = useControls({
-    role: me?.role, enabled: playing, sendInput: actions.sendInput, hardDrop, onJumperInput,
+    role: me?.role, enabled: playing, sendInput: actions.sendInput, hardDrop, onJumperInput, onTetrisAction,
   });
 
   // room zmienia tożsamość przy każdej wiadomości — koniec odliczania liczymy raz na odliczanie
@@ -300,6 +309,7 @@ export default function Game() {
               showDanger={me?.settings?.dangerHint ?? true}
               lite={lite}
               predictor={predictor}
+              piecePredictor={piecePredictor}
               mode={me?.role === ROLES.JUMPER ? 'jumper' : 'full'}
               phase={room.phase}
               countdownEndsAt={countdownEndsAt}
@@ -344,6 +354,8 @@ export default function Game() {
             <span key={chain} className={styles.meterValue}>×{chain}</span>
           </div>
         </section>
+
+        <Diagnostics rendererRef={rendererRef} ping={ping} />
 
         <button type="button" className={`btn btn--quiet ${styles.leave}`} onClick={actions.leaveRoom}>
           Opuść mecz

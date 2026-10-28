@@ -90,7 +90,6 @@ body {
   background:
     radial-gradient(70rem 40rem at 50% -20%, var(--surface), transparent 70%),
     var(--bg);
-  background-attachment: fixed;
   -webkit-font-smoothing: antialiased;
   padding-top: env(safe-area-inset-top, 0px);
   padding-bottom: env(safe-area-inset-bottom, 0px);

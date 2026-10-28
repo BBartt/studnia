@@ -11,8 +11,7 @@
   text-align: center;
   color: #e6e3dc;
   border-radius: inherit;
-  background: rgba(18, 21, 28, 0.82);
-  backdrop-filter: blur(3px);
+  background: rgba(18, 21, 28, 0.86);
   animation: fade 220ms ease-out;
 }
 @keyframes fade { from { opacity: 0; } }
@@ -136,8 +135,7 @@
   display: grid;
   place-items: center;
   padding: 20px;
-  background: color-mix(in srgb, var(--bg) 70%, transparent);
-  backdrop-filter: blur(6px);
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
   animation: fade 260ms ease-out;
 }
 .dialog { width: min(100%, 480px); padding: 28px; display: grid; gap: 16px; animation: lift 480ms var(--ease-out); }

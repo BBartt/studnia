@@ -1,0 +1,32 @@
+.box { display: grid; gap: 10px; }
+.toggle {
+  justify-self: start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.toggle:hover { color: var(--text-2); }
+.list {
+  margin: 0;
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: var(--r-m);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  font-size: var(--fs-xs);
+}
+.list div { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.list dt { color: var(--text-2); }
+.list dt span { display: block; color: var(--text-3); font-size: 0.68rem; }
+.list dd { margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.list div[data-level="good"] dd { color: var(--good); }
+.list div[data-level="ok"] dd { color: var(--tet); }
+.list div[data-level="bad"] dd { color: var(--danger); }
+.hint { font-size: var(--fs-xs); color: var(--text-3); }

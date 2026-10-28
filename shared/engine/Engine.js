@@ -78,6 +78,10 @@ export class GameEngine {
       wall: 0, wallDir: 0, wallCoyote: 0, chain: 0, impact: 0, controlLock: 0,
     };
     this.combo = 0;
+    this.ackSeq = 0;
+    this.inputSeq = 0;
+    this.inputAt = 0;
+    this.simTime = 0;
     this.events = [];
     this.result = null;
     this.spawn();
@@ -85,11 +89,17 @@ export class GameEngine {
 
   /* ---------- API ---------- */
 
-  queueAction(action) {
-    if (this.actions.length < MAX_QUEUED_ACTIONS) this.actions.push(action);
+  /** Akcja Tetrisa z numerem kolejnym (seq) — potrzebnym do predykcji po stronie klienta. */
+  queueAction(action, seq = 0) {
+    if (this.actions.length < MAX_QUEUED_ACTIONS) this.actions.push({ action, seq });
+    else this.ackSeq = Math.max(this.ackSeq, seq); // odrzucona = „obsłużona”, klient nie czeka na nią w nieskończoność
   }
 
-  setJumperInput({ left, right, jump }) {
+  setJumperInput({ left, right, jump }, seq = 0) {
+    // Punkt odniesienia dla predykcji klienta: numer i chwila OSTATNIEJ ZMIANY klawiszy.
+    // (Powtórzenie tych samych klawiszy nic nie zmienia w ruchu, więc nie przesuwa odniesienia.)
+    const changed = Boolean(left) !== this.input.left || Boolean(right) !== this.input.right || Boolean(jump) !== this.input.jump;
+    if (seq && changed) { this.inputSeq = seq; this.inputAt = this.simTime; }
     const j = this.jumper;
     if (jump && !this.input.jump) j.buffer = JUMP_BUFFER;
     if (!jump && this.input.jump && j.vy < -4) j.vy *= 0.45; // krótkie wciśnięcie = niski skok
@@ -108,8 +118,10 @@ export class GameEngine {
   tick(dt) {
     if (this.result) return;
 
-    for (const action of this.actions.splice(0, MAX_ACTIONS_PER_TICK)) {
+    this.simTime += dt;
+    for (const { action, seq } of this.actions.splice(0, MAX_ACTIONS_PER_TICK)) {
       this.applyAction(action);
+      this.ackSeq = Math.max(this.ackSeq, seq);
       if (this.result) return;
     }
 
@@ -147,13 +159,16 @@ export class GameEngine {
 
     return {
       grid: this.grid.map((row) => row.map((c) => c || '.').join('')),
-      piece: p ? { type: p.type, cells: this.cellsOf(p.m, p.x, p.y) } : null,
+      piece: p ? { type: p.type, cells: this.cellsOf(p.m, p.x, p.y), m: p.m, x: p.x, y: p.y } : null,
+      ack: this.ackSeq,
       ghost,
       danger,
       next: this.nextType,
       jumper: {
         x: round3(j.x), y: round3(j.y), vx: round3(j.vx), vy: round3(j.vy),
         ground: j.ground, face: j.face, dead: j.dead, wall: j.wall, chain: j.chain,
+        seq: this.inputSeq,
+        age: Math.round((this.simTime - this.inputAt) * 1000), // ms od zastosowania wejścia o numerze seq
       },
       combo: this.combo,
       lava: this.lava,

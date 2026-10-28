@@ -6,6 +6,7 @@
   "exports": {
     "./protocol": "./protocol.js",
     "./settings": "./settings.js",
-    "./engine": "./engine/Engine.js"
+    "./engine": "./engine/Engine.js",
+    "./pieces": "./engine/pieces.js"
   }
 }
