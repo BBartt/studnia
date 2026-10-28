@@ -33,7 +33,7 @@ function HoldButton({ label, children, onDown, onUp, repeat = false, className }
   );
 }
 
-export default function TouchPad({ role, act, setTouch }) {
+export default function TouchPad({ role, act, setTouch, hardDrop = false }) {
   if (role === ROLES.TETRIS) {
     return (
       <div className={`${styles.pad} ${styles.tetris}`}>
@@ -41,7 +41,7 @@ export default function TouchPad({ role, act, setTouch }) {
         <HoldButton label="Obróć" onDown={() => act('rotate')}>⟳</HoldButton>
         <HoldButton label="Klocek w prawo" repeat onDown={() => act('right')}>▶</HoldButton>
         <HoldButton label="Szybciej w dół" repeat onDown={() => act('soft')}>▼</HoldButton>
-        <HoldButton label="Zrzuć" className={styles.wide} onDown={() => act('hard')}>Zrzut</HoldButton>
+        {hardDrop && <HoldButton label="Zrzuć" className={styles.wide} onDown={() => act('hard')}>Zrzut</HoldButton>}
       </div>
     );
   }

@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     "./protocol": "./protocol.js",
-    "./settings": "./settings.js"
+    "./settings": "./settings.js",
+    "./engine": "./engine/Engine.js"
   }
 }

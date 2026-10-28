@@ -2,13 +2,14 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { GameEngine } from '../src/game/Engine.js';
 import { defaultSettings } from '@studnia/shared/settings';
-import { SAFE_PADS, ROWS } from '@studnia/shared/protocol';
+import { ROWS } from '@studnia/shared/protocol';
+import { randomLava } from '@studnia/shared/engine';
 
 const STEP = 1 / 60;
 const settings = (over = {}) => ({ ...defaultSettings(), startSpeed: 1, speedRamp: 'off', roundSeconds: 999, ...over });
 /** Silnik bez spadającego klocka — do testów samego skoczka. */
-function quiet(over) {
-  const e = new GameEngine(settings(over));
+function quiet(over, lava = [1, 8]) {
+  const e = new GameEngine(settings(over), { lava });
   e.piece = null;
   e.refreshActive();
   e.dropTimer = -1e9;
@@ -16,29 +17,53 @@ function quiet(over) {
 }
 const run = (e, input, frames) => { e.setJumperInput(input); for (let i = 0; i < frames; i++) e.tick(STEP); };
 
-test('skoczek startuje na bezpiecznym polu i przeżywa', () => {
+test('lawa: 2 pola po 1 kratce, nigdy obok siebie', () => {
+  for (let i = 0; i < 500; i++) {
+    const lava = randomLava();
+    assert.equal(lava.length, 2);
+    assert.ok(Math.abs(lava[0] - lava[1]) >= 2, `lawa obok siebie: ${lava}`);
+    assert.ok(lava.every((c) => c >= 0 && c < 10));
+  }
+});
+
+test('skoczek startuje z dala od lawy i przeżywa', () => {
+  for (let i = 0; i < 100; i++) {
+    const e = new GameEngine(settings());
+    const col = Math.floor(e.jumper.x + 0.35);
+    assert.ok(e.lava.every((l) => Math.abs(l - col) >= 1), `start ${col} przy lawie ${e.lava}`);
+  }
   const e = quiet();
   run(e, {}, 120);
   assert.equal(e.result, null);
-  const [from, to] = SAFE_PADS[0];
-  assert.ok(e.jumper.x >= from && e.jumper.x + 0.7 <= to, 'skoczek powinien stać na lewej półce');
 });
 
-test('półka ma 2 kratki — można po niej chodzić', () => {
-  const e = quiet();
-  run(e, { right: true }, 6);
-  run(e, {}, 30);
+test('dno poza lawą jest bezpieczne — można po nim chodzić', () => {
+  const e = quiet({}, [0, 9]);
+  run(e, { right: true }, 25);
+  run(e, { left: true }, 40);
+  run(e, {}, 20);
   assert.equal(e.result, null);
 });
 
-test('zejście z bezpiecznego pola na dno kończy rundę wygraną Tetrisa', () => {
-  const e = quiet();
-  run(e, { left: true }, 60);
+test('wejście na lawę kończy rundę wygraną Tetrisa', () => {
+  const e = quiet({}, [1, 8]);
+  run(e, { left: true }, 90);
   assert.deepEqual(e.result, { winner: 'tetris', reason: 'floor' });
 });
 
+test('natychmiastowy zrzut działa tylko, gdy reguła jest włączona', () => {
+  for (const hardDrop of [false, true]) {
+    const e = new GameEngine(settings({ hardDrop }), { lava: [0, 9] });
+    const y0 = e.piece.y;
+    e.queueAction('hard');
+    e.tick(STEP);
+    const moved = !e.piece || e.piece.y > y0 + 5 || e.events.some((ev) => ev.type === 'hardDrop');
+    assert.equal(moved, hardDrop);
+  }
+});
+
 test('stanie na klocku przy dnie jest bezpieczne', () => {
-  const e = quiet();
+  const e = quiet({}, [5, 8]);
   for (let x = 0; x < 10; x++) if (x !== 9) e.grid[ROWS - 1][x] = 'O';
   e.jumper.y = ROWS - 1 - 0.9 - 1e-5;
   run(e, { right: true }, 20);
@@ -67,7 +92,7 @@ test('seria odbić od ściany daje coraz wyższe odbicia', () => {
 test('losowa gra nie wpycha skoczka w klocki i zawsze się kończy', () => {
   const acts = ['left', 'right', 'rotate', 'soft', 'hard'];
   for (let r = 0; r < 120; r++) {
-    const e = new GameEngine(settings({ roundSeconds: 60, startSpeed: 1 + (r % 10), speedRamp: 'high', jumpPower: 1.3, runSpeed: 1.3 }));
+    const e = new GameEngine(settings({ roundSeconds: 60, startSpeed: 1 + (r % 10), speedRamp: 'high', jumpPower: 1.3, runSpeed: 1.3, hardDrop: r % 2 === 0 }));
     let t = 0;
     while (!e.result && t < 70) {
       if (Math.random() < 0.15) e.queueAction(acts[Math.floor(Math.random() * 5)]);

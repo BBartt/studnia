@@ -176,3 +176,7 @@
   pointer-events: none;
   overflow: visible;
 }
+
+.ping[data-level="good"] { color: var(--good); }
+.ping[data-level="ok"] { color: var(--tet); }
+.ping[data-level="bad"] { color: var(--danger); }

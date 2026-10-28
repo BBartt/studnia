@@ -12,7 +12,8 @@ import Scoreboard from '../components/Scoreboard.jsx';
 import TouchPad from '../components/TouchPad.jsx';
 import RoleIcon from '../components/RoleIcon.jsx';
 import { CountdownOverlay, RoundOverlay, PausedOverlay, MatchOverDialog } from '../components/Overlays.jsx';
-import { ROLE_INFO } from '../game/roles.js';
+import { ROLE_INFO, roleKeys } from '../game/roles.js';
+import { JumperPredictor } from '../game/predictor.js';
 import { shake, punch, thud, nudge } from '../game/uiFx.js';
 import { createOuterFx } from '../game/outerFx.js';
 import { PALETTES } from '../game/palette.js';
@@ -31,7 +32,7 @@ const selectChain = (s) => s?.jumper?.chain ?? 0;
 const selectDanger = (s) => (s?.stack ?? 0) >= DANGER_STACK;
 
 export default function Game() {
-  const { room, meId, actions } = useGame();
+  const { room, meId, actions, ping } = useGame();
   const { me, opponent } = usePlayers();
   const seconds = useSnapshot(selectSeconds);
   const lines = useSnapshot(selectLines);
@@ -59,7 +60,20 @@ export default function Game() {
   }, []);
 
   const playing = room.phase === PHASE.PLAYING;
-  const { act, setTouch } = useControls({ role: me?.role, enabled: playing, sendInput: actions.sendInput });
+  const hardDrop = Boolean(room.rules?.hardDrop);
+  const isJumper = me?.role === ROLES.JUMPER;
+
+  // Predykcja ruchu skoczka — tylko na ekranie skoczka, nowa na każdą rundę
+  const predictor = useMemo(
+    () => (isJumper ? new JumperPredictor() : null),
+    [isJumper, room.round], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  useEffect(() => { predictor?.setPhysics(me?.settings); }, [predictor, me?.settings]);
+  const onJumperInput = useCallback((keys) => predictor?.setInput(keys), [predictor]);
+
+  const { act, setTouch } = useControls({
+    role: me?.role, enabled: playing, sendInput: actions.sendInput, hardDrop, onJumperInput,
+  });
 
   // room zmienia tożsamość przy każdej wiadomości — koniec odliczania liczymy raz na odliczanie
   const countdownEndsAt = useMemo(
@@ -190,7 +204,7 @@ export default function Game() {
         break;
       case 'crush':
       case 'floor': {
-        fx?.spawn({ text: e.type === 'crush' ? 'Plask!' : 'Dno!', ...place(e.x, e.y - 1.5), tone: 'danger', size: 1.6 });
+        fx?.spawn({ text: e.type === 'crush' ? 'Plask!' : 'Lawa!', ...place(e.x, e.y - 1.5), tone: 'danger', size: 1.6 });
         if (motion) {
           shake(pageRef.current, e.type === 'crush' ? 14 : 10, 600);
           if (rich) out?.perimeterStars([pal.danger, pal.jumper, pal.gold], 26, 1.3);
@@ -242,7 +256,7 @@ export default function Game() {
             </div>
             <p className={styles.goal}>{myInfo.goal}</p>
             <ul className={styles.keys}>
-              {myInfo.keys.map(([k, what]) => (
+              {roleKeys(me.role, room.rules).map(([k, what]) => (
                 <li key={k}><span className="kbd">{k}</span><span>{what}</span></li>
               ))}
             </ul>
@@ -263,7 +277,10 @@ export default function Game() {
             <span key={urgent ? seconds : 'calm'} className={urgent ? styles.tick : undefined}>{seconds ?? total}</span>
             <span className={styles.unit}>s</span>
           </div>
-          <span className={`${styles.chip} ${styles.vs}`}>{opponent ? `vs ${opponent.nick}` : ''}</span>
+          <span className={`${styles.chip} ${styles.vs}`} title="Opóźnienie połączenia z serwerem">
+            {opponent ? `vs ${opponent.nick}` : ''}
+            {ping !== null && <span className={styles.ping} data-level={ping < 70 ? 'good' : ping < 150 ? 'ok' : 'bad'}> · {ping} ms</span>}
+          </span>
         </header>
 
         <div className={styles.timebar} aria-hidden="true">
@@ -282,6 +299,7 @@ export default function Game() {
               rendererRef={rendererRef}
               showDanger={me?.settings?.dangerHint ?? true}
               lite={lite}
+              predictor={predictor}
               mode={me?.role === ROLES.JUMPER ? 'jumper' : 'full'}
               phase={room.phase}
               countdownEndsAt={countdownEndsAt}
@@ -296,7 +314,7 @@ export default function Game() {
           <div ref={outerRef} className={styles.outerFx} aria-hidden="true" />
         </div>
 
-        {me && <TouchPad role={me.role} act={act} setTouch={setTouch} />}
+        {me && <TouchPad role={me.role} act={act} setTouch={setTouch} hardDrop={hardDrop} />}
       </section>
 
       <aside ref={rightRef} className={styles.right}>

@@ -1,4 +1,4 @@
-import { COLS, ROWS, JUMPER_SIZE, JUMPER_VIEW, SAFE_PADS, INTRO, isPadColumn } from '@studnia/shared/protocol';
+import { COLS, ROWS, JUMPER_SIZE, JUMPER_VIEW, INTRO, isLava } from '@studnia/shared/protocol';
 import { createBlockSprites } from './blockSprites.js';
 import { PALETTES } from './palette.js';
 
@@ -69,6 +69,12 @@ export class BoardRenderer {
     this.resize();
   }
 
+  /** Predykcja skoczka (tylko na ekranie skoczka) i źródło pingu do korekty. */
+  setPredictor(predictor, latency) {
+    this.predictor = predictor;
+    this.latency = latency;
+  }
+
   setOptions({ reducedMotion, showDanger, lite, theme, mode, phase, countdownEndsAt, countdownTotal } = {}) {
     if (reducedMotion !== undefined) this.reduced = reducedMotion;
     if (lite !== undefined) this.lite = lite;
@@ -100,6 +106,7 @@ export class BoardRenderer {
       return;
     }
     if (replayEvents) for (const e of snap.events ?? []) this.onEvent(e);
+    if (this.predicting()) this.predictor.sync(snap, this.latency?.current?.rtt ?? 100);
     const j = snap.jumper;
     if (!this.view || Math.hypot(j.x - this.view.x, j.y - this.view.y) > 2.5) {
       this.view = { x: j.x, y: j.y };
@@ -319,7 +326,7 @@ export class BoardRenderer {
 
     this.drawBackdrop(dt);
     if (this.snap) {
-      this.drawFloor();
+      this.drawFloor(dt);
       this.drawGrid(dt);
       this.drawPillars(dt);
       this.drawPopCells(dt);
@@ -343,8 +350,30 @@ export class BoardRenderer {
     }
   }
 
+  predicting() {
+    return Boolean(this.predictor && this.mode === 'jumper' && this.phase === 'playing');
+  }
+
+  /** Stan skoczka do rysowania: lokalna predykcja (u skoczka) albo stan z serwera. */
+  jumperState() {
+    const s = this.snap.jumper;
+    const p = this.predictor?.state;
+    if (!this.predicting() || !p || s.dead) return s;
+    return { ...s, x: p.x, y: p.y, vx: p.vx, vy: p.vy, ground: p.ground, wall: p.wall, face: p.face };
+  }
+
   updateJumperView(dt) {
     if (!this.snap || !this.view) return;
+    if (this.predicting()) {
+      this.predictor.advance(dt);
+      const p = this.predictor.state;
+      if (p && !this.snap.jumper.dead) {
+        // własny skoczek bez opóźnienia — dokładnie tam, gdzie policzyła go przeglądarka
+        this.view.x = p.x;
+        this.view.y = p.y;
+        return;
+      }
+    }
     const j = this.snap.jumper;
     const follow = Math.min(1, dt * 22);
     this.view.x += (j.x - this.view.x) * follow;
@@ -386,61 +415,70 @@ export class BoardRenderer {
     }
   }
 
-  /** Zabójcze dno + dwa bezpieczne pola. */
-  drawFloor() {
+  /** Dno: bezpieczna platforma na całej szerokości poza polami lawy. */
+  drawFloor(dt) {
     const { ctx, cs, pal } = this;
     const bottom = ROWS * cs;
     const lastRow = this.snap.grid[ROWS - 1];
+    const lava = this.snap.lava ?? [];
+    const free = (x) => lastRow[x] === '.';
 
-    // delikatna „kolumna światła” nad bezpiecznymi półkami
-    for (const [from, to] of SAFE_PADS) {
-      const g = ctx.createLinearGradient(0, bottom - cs * 3, 0, bottom);
+    // ostrzegawcza poświata nad lawą
+    for (const c of lava) {
+      if (!free(c)) continue;
+      const pulse = 0.14 + Math.sin(this.time * 3 + c) * 0.05;
+      const g = ctx.createLinearGradient(0, bottom - cs * 2.5, 0, bottom);
       g.addColorStop(0, 'rgba(0,0,0,0)');
-      g.addColorStop(1, pal.pad);
-      ctx.globalAlpha = 0.16;
+      g.addColorStop(1, pal.hazard);
+      ctx.globalAlpha = pulse;
       ctx.fillStyle = g;
-      ctx.fillRect(from * cs, bottom - cs * 3, (to - from) * cs, cs * 3);
+      ctx.fillRect(c * cs, bottom - cs * 2.5, cs, cs * 2.5);
+      // bąbelki unoszące się z lawy
+      if (!this.reduced && Math.random() < dt * 2.5) {
+        this.burst(c + 0.2 + Math.random() * 0.6, ROWS - 0.1, pal.hazard, 1, { speed: 0.4, up: 1.2, size: 0.07, gravity: -1 });
+      }
     }
     ctx.globalAlpha = 1;
 
-    // zabójcze dno — falująca czerwona tafla
+    // lawa — falująca tafla
     ctx.save();
     ctx.shadowColor = pal.hazard;
-    ctx.shadowBlur = cs * 0.5;
+    ctx.shadowBlur = cs * 0.4;
     ctx.fillStyle = pal.hazard;
-    for (let x = 0; x < COLS; x++) {
-      if (isPadColumn(x) || lastRow[x] !== '.') continue;
+    for (const c of lava) {
+      if (!free(c)) continue;
       ctx.beginPath();
-      ctx.moveTo(x * cs, bottom);
-      const steps = 6;
-      for (let i = 0; i <= steps; i++) {
-        const px = x + i / steps;
-        const wave = Math.sin(px * 3.2 + this.time * 3) * 0.04 + 0.17;
+      ctx.moveTo(c * cs, bottom);
+      for (let i = 0; i <= 6; i++) {
+        const px = c + i / 6;
+        const wave = Math.sin(px * 3.2 + this.time * 3) * 0.05 + 0.24;
         ctx.lineTo(px * cs, bottom - wave * cs);
       }
-      ctx.lineTo((x + 1) * cs, bottom);
+      ctx.lineTo((c + 1) * cs, bottom);
       ctx.closePath();
       ctx.fill();
     }
     ctx.restore();
 
-    // bezpieczne półki (2 kratki) — rysowane tylko tam, gdzie nie leży klocek
-    const h = cs * 0.26;
-    for (const [from, to] of SAFE_PADS) {
-      for (let c = from; c < to; c++) {
-        if (lastRow[c] !== '.') continue;
-        const left = c === from || lastRow[c - 1] !== '.';
-        const right = c === to - 1 || lastRow[c + 1] !== '.';
-        const x = c * cs + (left ? cs * 0.06 : 0);
-        const w = cs - (left ? cs * 0.06 : 0) - (right ? cs * 0.06 : 0);
-        const r = cs * 0.08;
-        ctx.fillStyle = pal.pad;
-        ctx.beginPath();
-        ctx.roundRect(x, bottom - h, w, h, [left ? r : 0, right ? r : 0, 0, 0]);
-        ctx.fill();
-        ctx.fillStyle = 'rgba(255,255,255,0.55)';
-        ctx.fillRect(x + (left ? cs * 0.06 : 0), bottom - h, w - (left ? cs * 0.06 : 0) - (right ? cs * 0.06 : 0), Math.max(1, cs * 0.04));
-      }
+    // platforma — ciągłe odcinki między lawą i klockami
+    const h = cs * 0.2;
+    const r = cs * 0.08;
+    let x = 0;
+    while (x < COLS) {
+      if (!free(x) || isLava(lava, x)) { x += 1; continue; }
+      let end = x;
+      while (end + 1 < COLS && free(end + 1) && !isLava(lava, end + 1)) end += 1;
+      const left = x * cs + cs * 0.04;
+      const width = (end - x + 1) * cs - cs * 0.08;
+      ctx.fillStyle = pal.pad;
+      ctx.globalAlpha = 0.85;
+      ctx.beginPath();
+      ctx.roundRect(left, bottom - h, width, h, [r, r, 0, 0]);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = 'rgba(255,255,255,0.45)';
+      ctx.fillRect(left + cs * 0.06, bottom - h, width - cs * 0.12, Math.max(1, cs * 0.035));
+      x = end + 1;
     }
   }
 
@@ -641,7 +679,7 @@ export class BoardRenderer {
 
   drawJumper(dt) {
     const { ctx, cs, pal } = this;
-    const j = this.snap.jumper;
+    const j = this.jumperState();
     const v = this.view;
 
     const fast = Math.hypot(j.vx, j.vy) > 6;

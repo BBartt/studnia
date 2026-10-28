@@ -64,3 +64,35 @@
 .reset svg { transition: transform 500ms var(--spring); }
 .opponent { display: grid; gap: 8px; padding-top: 16px; border-top: 1px solid var(--border); }
 .swapInfo { max-width: 60ch; justify-self: center; }
+
+.vote {
+  display: grid;
+  gap: 12px;
+  padding: 16px 18px;
+  border-radius: var(--r-m);
+  border: 1px dashed var(--border-strong);
+  background: var(--bg-deep);
+  transition: border-color 200ms, background-color 200ms;
+}
+.vote[data-enabled="true"] { border-style: solid; border-color: color-mix(in srgb, var(--good) 50%, transparent); background: color-mix(in srgb, var(--good) 8%, var(--bg-deep)); }
+.voteHead { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
+.voteLabel { font-weight: 600; font-size: var(--fs-s); }
+.voteSwitch { display: inline-flex; align-items: center; gap: 10px; font-size: var(--fs-xs); font-weight: 600; color: var(--text-2); cursor: pointer; }
+.voteSwitch input {
+  -webkit-appearance: none; appearance: none;
+  position: relative; width: 44px; height: 26px;
+  border-radius: 99px; background: var(--surface-3);
+  cursor: pointer; transition: background-color 200ms;
+}
+.voteSwitch input::after {
+  content: ""; position: absolute; top: 3px; left: 3px;
+  width: 20px; height: 20px; border-radius: 50%;
+  background: var(--surface-2); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  transition: transform 260ms var(--spring);
+}
+.voteSwitch input:checked { background: var(--good); }
+.voteSwitch input:checked::after { transform: translateX(18px); }
+.voters { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.voters li { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 99px; background: var(--surface); font-size: var(--fs-xs); color: var(--text-3); }
+.voters li[data-yes="true"] { color: var(--good); background: color-mix(in srgb, var(--good) 12%, var(--surface)); }
+.voteMark { font-weight: 700; }

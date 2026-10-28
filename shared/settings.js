@@ -49,6 +49,12 @@ export const SETTINGS_SCHEMA = Object.freeze({
       { value: 5, label: '5' },
     ],
   },
+  hardDrop: {
+    scope: 'vote',
+    label: 'Natychmiastowy zrzut (spacja)',
+    kind: 'toggle', default: false,
+    hint: 'Działa tylko wtedy, gdy zgodzą się obaj gracze.',
+  },
   effects: {
     scope: 'player',
     label: 'Efekty wizualne', kind: 'choice', default: 'full',
@@ -74,9 +80,14 @@ export const MIN_INTERVAL = 110;
 /**
  * Zakres ustawienia:
  * - 'match'  — zasady wspólne dla obu graczy (może je zmienić każdy),
- * - 'player' — ustawienie każdego gracza osobno, działa w jego rolach / na jego ekranie.
+ * - 'player' — ustawienie każdego gracza osobno, działa w jego rolach / na jego ekranie,
+ * - 'vote'   — głos każdego gracza; reguła działa tylko przy zgodzie wszystkich.
  */
-export const SETTINGS_SCOPES = Object.freeze(['match', 'player']);
+export const SETTINGS_SCOPES = Object.freeze(['match', 'player', 'vote']);
+
+/** Czy reguła głosowana jest włączona (wszyscy — i co najmniej dwóch — są za). */
+export const votePassed = (players, key) =>
+  players.length >= 2 && players.every((p) => p.settings?.[key] === true);
 
 /** Klucze ustawień z danego zakresu (bez zakresu = wszystkie). */
 export const settingsKeys = (scope) =>
@@ -92,13 +103,14 @@ export function defaultSettings(scope) {
  * + fizyka gracza-skoczka. Podświetlanie zagrożenia liczymy zawsze,
  * a o pokazaniu decyduje ekran każdego gracza.
  */
-export function roundSettings(match, tetrisPlayer, jumperPlayer) {
+export function roundSettings(match, tetrisPlayer, jumperPlayer, rules = {}) {
   return {
     ...match,
     startSpeed: tetrisPlayer.startSpeed,
     speedRamp: tetrisPlayer.speedRamp,
     jumpPower: jumperPlayer.jumpPower,
     runSpeed: jumperPlayer.runSpeed,
+    hardDrop: Boolean(rules.hardDrop),
     dangerHint: true,
   };
 }

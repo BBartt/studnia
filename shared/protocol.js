@@ -9,13 +9,13 @@ export const ROLES = Object.freeze({ TETRIS: 'tetris', JUMPER: 'jumper' });
 export const JUMPER_SIZE = Object.freeze({ w: 0.7, h: 0.9 });
 
 /**
- * Bezpieczne półki na dnie jako przedziały kolumn [od, do) — każda ma 2 kratki szerokości.
- * Układ symetryczny: kolumny 3–4 i 7–8 licząc od lewej (od 1). Reszta dna zabija.
+ * Dno studni jest bezpieczne poza polami lawy: LAVA_COUNT pól po 1 kratce,
+ * losowanych w każdej rundzie (nigdy obok siebie).
  */
-export const SAFE_PADS = Object.freeze([Object.freeze([2, 4]), Object.freeze([6, 8])]);
+export const LAVA_COUNT = 2;
 
-/** Czy kolumna `x` należy do którejś bezpiecznej półki. */
-export const isPadColumn = (x) => SAFE_PADS.some(([from, to]) => x >= from && x < to);
+/** Czy kolumna `x` jest lawą (lista kolumn lawy przychodzi w stanie gry). */
+export const isLava = (lava, x) => Boolean(lava?.includes(x));
 
 /** Pole widzenia skoczka: 7 kratek szerokości, proporcje 1:2 jak cała plansza (7 × 14). */
 export const JUMPER_VIEW = Object.freeze({ cols: 7, rows: 14 });
@@ -41,6 +41,7 @@ export const C2S = Object.freeze({
   LEAVE: 'leaveRoom',
   SETTINGS: 'updateSettings',
   RESET_SETTINGS: 'resetSettings',
+  PING: 'ping',
   SWAP: 'swapRoles',
   START: 'startMatch',
   INPUT: 'input',
@@ -53,6 +54,7 @@ export const S2C = Object.freeze({
   ROOM: 'room',
   STATE: 'state',
   ERROR: 'error',
+  PONG: 'pong',
 });
 
 export const TETRIS_ACTIONS = Object.freeze(['left', 'right', 'rotate', 'soft', 'hard']);

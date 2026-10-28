@@ -4,6 +4,7 @@ services:
     name: studnia
     runtime: docker
     plan: free
+    region: frankfurt        # najbliżej Polski — ~20–40 ms zamiast ~150 ms z USA
     numInstances: 1          # stan gry jest w pamięci, więc zawsze jedna instancja
     healthCheckPath: /api/health
     envVars:

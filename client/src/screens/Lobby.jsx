@@ -2,10 +2,10 @@ import { useState } from 'react';
 import { ROLES } from '@studnia/shared/protocol';
 import { useGame, usePlayers } from '../net/GameProvider.jsx';
 import SettingsPanel, { SettingsSummary } from '../components/SettingsPanel.jsx';
-import { defaultSettings } from '@studnia/shared/settings';
+import { defaultSettings, SETTINGS_SCHEMA } from '@studnia/shared/settings';
 import Scoreboard from '../components/Scoreboard.jsx';
 import RoleIcon from '../components/RoleIcon.jsx';
-import { ROLE_INFO } from '../game/roles.js';
+import { ROLE_INFO, roleKeys } from '../game/roles.js';
 import styles from './Lobby.module.css';
 
 export default function Lobby() {
@@ -66,7 +66,7 @@ export default function Lobby() {
               )}
               <p className={styles.goal}>{info.goal}</p>
               <ul className={styles.keys}>
-                {info.keys.map(([k, what]) => (
+                {roleKeys(role, room.rules).map(([k, what]) => (
                   <li key={k}><span className="kbd">{k}</span> {what}</li>
                 ))}
               </ul>
@@ -92,11 +92,20 @@ export default function Lobby() {
             </p>
           </div>
           <ResetButton
-            disabled={isDefault(room.settings, 'match')}
+            disabled={isDefault(room.settings, 'match') && !room.players.some((p) => p.settings?.hardDrop)}
             onClick={() => actions.resetSettings('match')}
           />
         </div>
         <SettingsPanel scope="match" settings={room.settings} onChange={actions.updateSettings} />
+        {me && (
+          <VoteRule
+            settingKey="hardDrop"
+            players={room.players}
+            me={me}
+            enabled={Boolean(room.rules?.hardDrop)}
+            onVote={(value) => actions.updateSettings({ hardDrop: value })}
+          />
+        )}
       </section>
 
       {me && (
@@ -154,5 +163,41 @@ function ResetButton({ onClick, disabled }) {
       </svg>
       Ustawienia fabryczne
     </button>
+  );
+}
+
+/** Reguła wymagająca zgody obu graczy: mój głos + stan głosów wszystkich. */
+function VoteRule({ settingKey, players, me, enabled, onVote }) {
+  const spec = SETTINGS_SCHEMA[settingKey];
+  const mine = Boolean(me.settings?.[settingKey]);
+  const missing = players.length < 2;
+  return (
+    <div className={styles.vote} data-enabled={enabled}>
+      <div className={styles.voteHead}>
+        <div>
+          <p className={styles.voteLabel}>{spec.label}</p>
+          <p className={styles.readonly}>
+            {enabled
+              ? 'Włączony — obaj gracze się zgodzili.'
+              : missing ? 'Potrzebny drugi gracz — działa tylko przy zgodzie obu.' : 'Wyłączony — działa tylko, gdy zgodzą się obaj gracze.'}
+          </p>
+        </div>
+        <label className={styles.voteSwitch}>
+          <span>{mine ? 'Jestem za' : 'Jestem przeciw'}</span>
+          <input type="checkbox" role="switch" checked={mine} onChange={(e) => onVote(e.target.checked)} />
+        </label>
+      </div>
+      <ul className={styles.voters}>
+        {players.map((p) => {
+          const yes = Boolean(p.settings?.[settingKey]);
+          return (
+            <li key={p.id} data-yes={yes}>
+              <span className={styles.voteMark} aria-hidden="true">{yes ? '✓' : '·'}</span>
+              {p.nick}{p.id === me.id ? ' (ty)' : ''}: {yes ? 'za' : 'jeszcze nie'}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }

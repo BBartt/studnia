@@ -17,4 +17,6 @@ export const config = Object.freeze({
     .filter(Boolean),
   // Za reverse proxy (Caddy, nginx, Render) — poprawne IP i protokół w logach/nagłówkach
   trustProxy: process.env.TRUST_PROXY !== 'false',
+  // Tylko do testów: sztuczne opóźnienie każdej wiadomości (ms, w jedną stronę) — symuluje internet
+  simulatedLatencyMs: Number(process.env.SIMULATED_LATENCY_MS) || 0,
 });

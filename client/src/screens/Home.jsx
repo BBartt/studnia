@@ -47,7 +47,7 @@ export default function Home() {
             <RoleIcon role="tetris" size={28} />
             <div>
               <strong>Tetris</strong>
-              <span>Wygrywa, gdy zgniecie skoczka albo zepchnie go na dno.</span>
+              <span>Wygrywa, gdy zgniecie skoczka albo zepchnie go do lawy.</span>
             </div>
           </div>
           <div className={styles.role} data-role="jumper">

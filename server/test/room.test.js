@@ -30,6 +30,7 @@ async function connect() {
     if (m.type === 'room') c.room = m.room;
     if (m.type === 'state') c.state = m.state;
     if (m.type === 'error') c.errors.push(m.message);
+    if (m.type === 'pong') c.pong = m.t;
   });
   c.send = (o) => ws.send(JSON.stringify(o));
   await new Promise((r) => ws.on('open', r));
@@ -70,15 +71,37 @@ test('pełny mecz: pokój, walidacja, runda, zamiana ról, ranking', { timeout: 
   a.send({ type: 'updateSettings', settings: { startSpeed: 7 } });
   await wait(60);
 
+  // natychmiastowy zrzut: wymaga zgody obu graczy
+  a.send({ type: 'updateSettings', settings: { hardDrop: true } });
+  await wait(60);
+  assert.equal(a.room.rules.hardDrop, false, 'jeden głos nie wystarcza');
+  b.send({ type: 'updateSettings', settings: { hardDrop: true } });
+  await wait(60);
+  assert.equal(a.room.rules.hardDrop, true, 'obaj za — zrzut włączony');
+  b.send({ type: 'updateSettings', settings: { hardDrop: false } });
+  await wait(60);
+  assert.equal(a.room.rules.hardDrop, false, 'wycofanie głosu wyłącza zrzut');
+
+  // ping
+  a.send({ type: 'ping', t: 123 });
+  await wait(40);
+  assert.equal(a.pong, 123);
+
   const roleBefore = a.room.players.find((p) => p.id === a.id).role;
   a.send({ type: 'startMatch' });
   await wait(5300); // odliczanie z intro
   assert.equal(a.room.phase, 'playing');
 
-  // skoczek schodzi z bezpiecznego pola na zabójcze dno
+  // skoczek idzie prosto na najbliższe pole lawy
   const jumper = a.room.players.find((p) => p.role === 'jumper').id === a.id ? a : b;
-  jumper.send({ type: 'input', keys: { left: true } });
-  await wait(600);
+  for (let i = 0; i < 60 && a.room.phase === 'playing'; i++) {
+    const j = jumper.state.jumper;
+    const center = j.x + 0.35;
+    const target = jumper.state.lava.reduce((best, c) => (Math.abs(c + 0.5 - center) < Math.abs(best + 0.5 - center) ? c : best));
+    const dx = target + 0.5 - center;
+    jumper.send({ type: 'input', keys: { left: dx < -0.1, right: dx > 0.1 } });
+    await wait(50);
+  }
   assert.equal(a.room.phase, 'roundOver');
   assert.equal(a.room.lastRound.reason, 'floor');
 

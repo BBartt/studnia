@@ -6,7 +6,8 @@ import { createSnapshotStore } from './snapshotStore.js';
 const SESSION_KEY = 'studnia:session';
 const GameContext = createContext(null);
 
-const initialState = { status: 'connecting', meId: null, room: null, error: null };
+const initialState = { status: 'connecting', meId: null, room: null, error: null, ping: null };
+const PING_EVERY_MS = 2000;
 
 function reducer(state, action) {
   switch (action.type) {
@@ -15,6 +16,7 @@ function reducer(state, action) {
     case 'room': return { ...state, room: action.room };
     case 'error': return { ...state, error: { message: action.message, at: Date.now() } };
     case 'clearError': return { ...state, error: null };
+    case 'ping': return state.ping === action.ping ? state : { ...state, ping: action.ping };
     default: return state;
   }
 }
@@ -22,6 +24,7 @@ function reducer(state, action) {
 export function GameProvider({ children }) {
   const [state, dispatch] = useReducer(reducer, initialState);
   const socketRef = useRef(null);
+  const latency = useRef({ rtt: 100 }); // wygładzony ping (ms) — czyta go predykcja skoczka
   const storeRef = useRef(null);
   storeRef.current ??= createSnapshotStore();
 
@@ -50,13 +53,22 @@ export function GameProvider({ children }) {
           case S2C.ERROR:
             dispatch({ type: 'error', message: msg.message });
             break;
+          case S2C.PONG: {
+            const sample = performance.now() - msg.t;
+            if (sample >= 0 && sample < 5000) {
+              latency.current.rtt = latency.current.rtt * 0.7 + sample * 0.3;
+              dispatch({ type: 'ping', ping: Math.round(latency.current.rtt) });
+            }
+            break;
+          }
           default:
             break;
         }
       },
     });
     socketRef.current = socket;
-    return () => socket.close();
+    const pinger = setInterval(() => socket.send({ type: C2S.PING, t: performance.now() }), PING_EVERY_MS);
+    return () => { clearInterval(pinger); socket.close(); };
   }, []);
 
   const actions = useMemo(() => {
@@ -76,7 +88,7 @@ export function GameProvider({ children }) {
   }, []);
 
   const value = useMemo(
-    () => ({ ...state, actions, store: storeRef.current }),
+    () => ({ ...state, actions, store: storeRef.current, latency }),
     [state, actions],
   );
 

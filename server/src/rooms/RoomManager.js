@@ -16,6 +16,7 @@ export class RoomManager {
 
   handle(client, msg) {
     if (msg.type === C2S.HELLO) return this.hello(client, msg);
+    if (msg.type === C2S.PING) return client.send({ type: S2C.PONG, t: Number(msg.t) || 0 });
     if (!client.sessionId) return;
 
     switch (msg.type) {

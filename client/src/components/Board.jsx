@@ -8,10 +8,10 @@ import { BoardRenderer } from '../game/renderer.js';
  * Canvas planszy. Subskrybuje stan bezpośrednio, bez przerenderowań Reacta.
  * `mode="jumper"` włącza ograniczone pole widzenia z animacją intro.
  */
-export default function Board({ className, showDanger, lite = false, mode, phase, countdownEndsAt, countdownTotal, rendererRef }) {
+export default function Board({ className, showDanger, lite = false, mode, phase, countdownEndsAt, countdownTotal, rendererRef, predictor }) {
   const canvasRef = useRef(null);
   const localRef = useRef(null);
-  const { store } = useGame();
+  const { store, latency } = useGame();
   const reducedMotion = useReducedMotion();
   const { theme } = useTheme();
 
@@ -19,6 +19,7 @@ export default function Board({ className, showDanger, lite = false, mode, phase
     const canvas = canvasRef.current;
     const renderer = new BoardRenderer(canvas);
     localRef.current = renderer;
+    canvas.studniaRenderer = renderer; // ułatwia diagnostykę w narzędziach przeglądarki
     if (rendererRef) rendererRef.current = renderer;
     renderer.push(store.get(), { replayEvents: false });
 
@@ -42,6 +43,10 @@ export default function Board({ className, showDanger, lite = false, mode, phase
       if (rendererRef) rendererRef.current = null;
     };
   }, [store, rendererRef]);
+
+  useEffect(() => {
+    localRef.current?.setPredictor(predictor, latency);
+  }, [predictor, latency]);
 
   useEffect(() => {
     localRef.current?.setOptions({ reducedMotion, showDanger, lite, theme, mode, phase, countdownEndsAt, countdownTotal });

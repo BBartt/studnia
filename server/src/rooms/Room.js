@@ -1,10 +1,12 @@
 import { PHASE, ROLES, S2C, C2S, TETRIS_ACTIONS, COUNTDOWN_MS } from '@studnia/shared/protocol';
-import { defaultSettings, sanitizeSettings, roundSettings } from '@studnia/shared/settings';
+import { defaultSettings, sanitizeSettings, roundSettings, votePassed } from '@studnia/shared/settings';
 import { GameEngine } from '../game/Engine.js';
 
-const TICK_HZ = 60;
-const STEP = 1 / TICK_HZ;
-const SEND_EVERY_TICKS = 2; // 30 aktualizacji na sekundę
+// Fizyka liczona krokami 1/60 s, ale timer budzi się 30 razy na sekundę
+// (2 kroki na raz) i od razu wysyła stan — połowa wybudzeń procesora,
+// co ma znaczenie na darmowych hostingach z 0,1 CPU.
+const STEP = 1 / 60;
+const LOOP_HZ = 30;
 const ROUND_OVER_MS = 4200;
 const RECONNECT_GRACE_MS = 30_000;
 
@@ -56,7 +58,7 @@ export class Room {
       connected: true,
       client,
       graceTimer: null,
-      settings: defaultSettings('player'),   // ustawienia tylko tego gracza
+      settings: { ...defaultSettings('player'), ...defaultSettings('vote') }, // ustawienia i głosy tego gracza
     };
     this.players.push(player);
     this.hostId ??= player.id;
@@ -134,17 +136,21 @@ export class Room {
           this.settings = nextMatch;
           this.settingsBy = p.nick;
         }
+        // własne ustawienia i głosy gracza (np. zgoda na natychmiastowy zrzut)
         p.settings = sanitizeSettings(input, p.settings, 'player');
+        p.settings = sanitizeSettings(input, p.settings, 'vote');
         return this.broadcastRoom();
       }
 
       case C2S.RESET_SETTINGS:
         if (this.phase !== PHASE.LOBBY) return;
         if (msg.scope === 'match') {
+          // zasady fabryczne = także wycofanie wszystkich głosów
           this.settings = defaultSettings('match');
           this.settingsBy = p.nick;
+          for (const pl of this.players) pl.settings = { ...pl.settings, ...defaultSettings('vote') };
         } else {
-          p.settings = defaultSettings('player');
+          p.settings = { ...p.settings, ...defaultSettings('player') };
         }
         return this.broadcastRoom();
 
@@ -179,6 +185,11 @@ export class Room {
 
   /* ---------- Przebieg meczu ---------- */
 
+  /** Reguły wymagające zgody obu graczy. */
+  rules() {
+    return { hardDrop: votePassed(this.players, 'hardDrop') };
+  }
+
   swapRoles() {
     for (const p of this.players) p.role = p.role === ROLES.TETRIS ? ROLES.JUMPER : ROLES.TETRIS;
   }
@@ -197,7 +208,7 @@ export class Room {
     // Ustawienia tej rundy zależą od tego, kto teraz jest Tetrisem, a kto skoczkiem
     const tetris = this.byRole(ROLES.TETRIS);
     const jumper = this.byRole(ROLES.JUMPER);
-    this.engine = new GameEngine(roundSettings(this.settings, tetris.settings, jumper.settings));
+    this.engine = new GameEngine(roundSettings(this.settings, tetris.settings, jumper.settings, this.rules()));
     this.startCountdown();
   }
 
@@ -225,7 +236,6 @@ export class Room {
     this.stopLoop();
     let last = performance.now();
     let acc = 0;
-    let ticks = 0;
 
     this.loop = setInterval(() => {
       const now = performance.now();
@@ -236,15 +246,9 @@ export class Room {
         this.engine.tick(STEP);
         acc -= STEP;
       }
-      ticks += 1;
-
-      if (this.engine.result) {
-        this.broadcastState();
-        this.endRound();
-      } else if (ticks % SEND_EVERY_TICKS === 0) {
-        this.broadcastState();
-      }
-    }, 1000 / TICK_HZ);
+      this.broadcastState();
+      if (this.engine.result) this.endRound();
+    }, 1000 / LOOP_HZ);
   }
 
   stopLoop() {
@@ -319,6 +323,7 @@ export class Room {
       round: this.round,
       settings: this.settings,
       settingsBy: this.settingsBy,
+      rules: this.rules(),
       players: this.players.map(({ id, nick, role, wins, score, total, matchesWon, connected, settings }) =>
         ({ id, nick, role, wins, score, total, matchesWon, connected, settings })),
       countdownMs: this.phase === PHASE.COUNTDOWN ? Math.max(0, this.countdownEndsAt - Date.now()) : 0,
@@ -330,14 +335,15 @@ export class Room {
   }
 
   broadcastRoom() {
-    const room = this.publicState();
-    for (const p of this.players) p.client?.send({ type: S2C.ROOM, room });
+    const raw = JSON.stringify({ type: S2C.ROOM, room: this.publicState() });
+    for (const p of this.players) p.client?.sendRaw(raw);
   }
 
   broadcastState() {
     if (!this.engine) return;
-    const state = this.engine.snapshot();
-    for (const p of this.players) p.client?.send({ type: S2C.STATE, state });
+    // serializujemy raz dla wszystkich graczy
+    const raw = JSON.stringify({ type: S2C.STATE, state: this.engine.snapshot() });
+    for (const p of this.players) p.client?.sendRaw(raw);
   }
 
   /* ---------- Sprzątanie ---------- */
@@ -358,3 +364,4 @@ export class Room {
     for (const p of this.players) clearTimeout(p.graceTimer);
   }
 }
+

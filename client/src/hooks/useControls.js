@@ -22,7 +22,7 @@ const isTyping = (e) => e.target instanceof Element && e.target.closest('input, 
  * Klawiatura + dotyk dla aktualnej roli gracza.
  * Tetris wysyła pojedyncze akcje, skoczek — stan klawiszy tylko przy zmianie.
  */
-export function useControls({ role, enabled, sendInput }) {
+export function useControls({ role, enabled, sendInput, hardDrop = false, onJumperInput }) {
   const pressedCodes = useRef(new Set());
   const touch = useRef({ left: false, right: false, jump: false });
   const lastSignature = useRef('');
@@ -37,12 +37,14 @@ export function useControls({ role, enabled, sendInput }) {
     const signature = `${+keys.left}${+keys.right}${+keys.jump}`;
     if (signature === lastSignature.current) return;
     lastSignature.current = signature;
+    onJumperInput?.(keys);   // predykcja: ruch od razu na ekranie
     sendInput({ keys });
-  }, [sendInput]);
+  }, [sendInput, onJumperInput]);
 
   const act = useCallback((action) => {
+    if (action === 'hard' && !hardDrop) return;
     if (enabled && role === ROLES.TETRIS) sendInput({ action });
-  }, [enabled, role, sendInput]);
+  }, [enabled, role, sendInput, hardDrop]);
 
   const setTouch = useCallback((key, value) => {
     touch.current[key] = value;
@@ -61,6 +63,7 @@ export function useControls({ role, enabled, sendInput }) {
         const action = TETRIS_KEYS[e.code];
         if (!action) return;
         e.preventDefault();
+        if (action === 'hard' && !hardDrop) return; // zrzut wyłączony, dopóki obaj się nie zgodzą
         if (e.repeat && !REPEATABLE.has(action)) return;
         sendInput({ action });
       } else if (JUMPER_KEYS[e.code]) {
@@ -88,7 +91,7 @@ export function useControls({ role, enabled, sendInput }) {
       window.removeEventListener('keyup', onUp);
       window.removeEventListener('blur', onBlur);
     };
-  }, [role, enabled, sendInput, flushJumper]);
+  }, [role, enabled, sendInput, flushJumper, hardDrop]);
 
   return { act, setTouch };
 }

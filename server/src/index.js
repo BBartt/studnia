@@ -80,7 +80,12 @@ wss.on('connection', (ws) => {
     alive: true,
     bucket: { tokens: RATE.burst, last: Date.now() },
     send(obj) {
-      if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(obj));
+      this.sendRaw(JSON.stringify(obj));
+    },
+    sendRaw(text) {
+      const out = () => { if (ws.readyState === ws.OPEN) ws.send(text); };
+      if (config.simulatedLatencyMs) setTimeout(out, config.simulatedLatencyMs);
+      else out();
     },
   };
   clients.set(ws, client);
@@ -91,11 +96,15 @@ wss.on('connection', (ws) => {
     let msg;
     try { msg = JSON.parse(raw); } catch { return; }
     if (!msg || typeof msg.type !== 'string') return;
-    try {
-      manager.handle(client, msg);
-    } catch (err) {
-      console.error('[ws] błąd obsługi wiadomości', msg.type, err);
-    }
+    const handle = () => {
+      try {
+        manager.handle(client, msg);
+      } catch (err) {
+        console.error('[ws] błąd obsługi wiadomości', msg.type, err);
+      }
+    };
+    if (config.simulatedLatencyMs) setTimeout(handle, config.simulatedLatencyMs);
+    else handle();
   });
   ws.on('close', () => {
     clients.delete(ws);
@@ -116,6 +125,7 @@ const heartbeat = setInterval(() => {
 
 server.listen(config.port, config.host, () => {
   console.log(`[studnia] serwer działa na http://${config.host}:${config.port} (WebSocket: /ws, tryb: ${config.production ? 'produkcja' : 'deweloperski'})`);
+  if (config.simulatedLatencyMs) console.log(`[studnia] UWAGA: symulowane opóźnienie ${config.simulatedLatencyMs} ms w każdą stronę`);
 });
 
 /* ---------- Łagodne zamykanie (docker stop, deploy) ---------- */
